@@ -1,3 +1,11 @@
+import {
+  ToolRequestMessage,
+  ToolResponseMessage,
+  ErrorMessage,
+  // ToolOutput, // ToolOutput is used by IAgentTool, not directly returned by handleToolRequest
+} from '@ai-dev-agent/shared';
+import { ToolRegistry } from './tool.registry';
+
 /**
  * Defines the structure for a message within a chat session.
  */
@@ -33,8 +41,8 @@ export interface ILLMGatewayService {
 }
 
 /**
- * ChatService manages chat sessions and messages.
- * It now integrates with an LLM gateway to provide dynamic agent responses.
+ * ChatService manages chat sessions, messages, and orchestrates tool execution.
+ * It integrates with an LLM gateway for chat responses and a ToolRegistry for tool calls.
  */
 export class ChatService {
   private sessions: Map<string, ChatSession>;
@@ -43,8 +51,12 @@ export class ChatService {
    * Creates an instance of ChatService.
    * @param llmGatewayService An instance of a service that implements ILLMGatewayService,
    *                          used to generate responses from an LLM.
+   * @param toolRegistry An instance of ToolRegistry to manage and access available tools.
    */
-  constructor(private readonly llmGatewayService: ILLMGatewayService) {
+  constructor(
+    private readonly llmGatewayService: ILLMGatewayService,
+    private readonly toolRegistry: ToolRegistry, // Added ToolRegistry
+  ) {
     this.sessions = new Map<string, ChatSession>();
   }
 
@@ -135,5 +147,82 @@ export class ChatService {
     }
     console.log(`[ChatService] History retrieved for session ${sessionId}: ${session.messages.length} messages`);
     return session.messages;
+  }
+
+  /**
+   * Handles an incoming tool request message.
+   * It validates the request, finds the appropriate tool, executes it,
+   * and prepares a response message (either ToolResponseMessage or ErrorMessage).
+   *
+   * @param request The ToolRequestMessage received from the client/agent.
+   * @returns A Promise that resolves to either a ToolResponseMessage or an ErrorMessage.
+   */
+  public async handleToolRequest(
+    request: ToolRequestMessage,
+  ): Promise<ToolResponseMessage | ErrorMessage> {
+    const { toolName, toolCallId, arguments: toolArgs, sessionId } = request;
+
+    console.log(
+      `[ChatService] Received tool request. ToolName: ${toolName}, ToolCallID: ${toolCallId}, SessionID: ${sessionId}, Args: ${JSON.stringify(toolArgs)}`,
+    );
+
+    // Basic Validation
+    if (!toolName || !toolCallId || toolArgs === undefined) {
+      const errorMsg = 'Invalid ToolRequestMessage: toolName, toolCallId, and arguments are required.';
+      console.error(`[ChatService] ${errorMsg} Request: ${JSON.stringify(request)}`);
+      return {
+        type: 'error',
+        sessionId,
+        toolCallId, // Include toolCallId if available, for client tracking
+        error: errorMsg,
+        details: 'Missing required fields in ToolRequestMessage.',
+        timestamp: new Date().toISOString(),
+      } as ErrorMessage; // Cast to ErrorMessage, ensuring all fields are present
+    }
+
+    const tool = this.toolRegistry.getTool(toolName);
+
+    if (!tool) {
+      const errorMsg = `Unknown tool: "${toolName}". No tool registered with this name.`;
+      console.error(`[ChatService] ${errorMsg} ToolCallID: ${toolCallId}`);
+      return {
+        type: 'error',
+        sessionId,
+        toolCallId,
+        error: errorMsg,
+        details: `Available tools: ${this.toolRegistry.listToolNames().join(', ') || 'None'}`,
+        timestamp: new Date().toISOString(),
+      } as ErrorMessage;
+    }
+
+    try {
+      console.log(`[ChatService] Executing tool "${toolName}" for ToolCallID: ${toolCallId}`);
+      const toolOutput = await tool.execute(toolArgs, toolCallId, sessionId);
+
+      const responseMessage: ToolResponseMessage = {
+        type: 'tool_response',
+        sessionId,
+        toolCallId,
+        toolName,
+        response: toolOutput.response,
+        isError: toolOutput.isError,
+        timestamp: new Date().toISOString(),
+      };
+      console.log(
+        `[ChatService] Tool "${toolName}" executed. ToolCallID: ${toolCallId}, IsError: ${toolOutput.isError}, Response: ${JSON.stringify(toolOutput.response)}`,
+      );
+      return responseMessage;
+    } catch (error: any) {
+      const errorMsg = `Error executing tool "${toolName}": ${error.message}`;
+      console.error(`[ChatService] ${errorMsg} ToolCallID: ${toolCallId}`, error);
+      return {
+        type: 'error',
+        sessionId,
+        toolCallId,
+        error: errorMsg,
+        details: error.stack || 'No stack trace available.',
+        timestamp: new Date().toISOString(),
+      } as ErrorMessage;
+    }
   }
 }

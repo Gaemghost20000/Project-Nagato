@@ -108,9 +108,40 @@ app.post('/v1/chat/completions', async (req: Request, res: Response) => {
     const axiosError = error as AxiosError;
     console.error('Error calling LLM provider:');
     if (axiosError.response) {
-      console.error('Status:', axiosError.response.status);
-      console.error('Data:', axiosError.response.data);
-      res.status(axiosError.response.status).json(axiosError.response.data);
+      const status = axiosError.response?.status || 500;
+      const data = axiosError.response?.data;
+      // Initialize with the general error message, in case data is not useful or doesn't contain a message
+      let responseData: any = { message: axiosError.message || 'An error occurred with the LLM provider.' };
+
+      if (data) {
+        if (typeof data === 'object' && data !== null) {
+          // Spread the data object and ensure a message field exists, prioritizing data.message
+          // Also, ensure that the original axiosError.message is included if data.message is not present or different
+          const providerMessage = (data as any).message;
+          responseData = { ...data, message: providerMessage || axiosError.message };
+          if (providerMessage && axiosError.message && providerMessage !== axiosError.message) {
+            responseData.gateway_error_message = axiosError.message; // Add original message if different
+          }
+        } else {
+          // If data is not an object (e.g., a string), include it and keep the original error message
+          responseData = { data, message: axiosError.message };
+        }
+      }
+      
+      // Final check: if after all processing, message is still not set or empty, provide a generic one.
+      if (!responseData.message && axiosError.message) {
+          responseData.message = axiosError.message;
+      }
+      if (!responseData.message) {
+          responseData.message = 'An unexpected error occurred with the LLM provider.';
+      }
+      // If responseData became empty for some reason
+      if (Object.keys(responseData).length === 0) {
+           responseData = { message: 'An unexpected error occurred with the LLM provider.' };
+      }
+
+      console.error('Error from LLM provider:', status, JSON.stringify(responseData)); // Stringify for better logging of complex objects
+      res.status(status).json(responseData);
     } else if (axiosError.request) {
       console.error('Request Error:', axiosError.request);
       res.status(500).json({ error: 'No response received from LLM provider.' });

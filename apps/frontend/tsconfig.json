@@ -23,6 +23,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@ai-dev-agent/shared": [
+        "../../packages/shared/src/index.ts"
       ]
     },
     // Next.js doesn't use outDir from tsconfig.json in the same way typical TS projects do.
@@ -36,6 +39,9 @@
       }
     ]
   },
+  "references": [
+    { "path": "../../packages/shared" }
+  ],
   "include": [
     "**/*.ts",
     "**/*.tsx",

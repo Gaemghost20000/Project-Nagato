@@ -12,6 +12,7 @@
     "test": "echo \"Error: no test specified\" && exit 0"
   },
   "dependencies": {
+    "@ai-dev-agent/shared": "workspace:^",
     "@types/express": "^4.17.21",
     "@types/uuid": "^10.0.0",
     "cors": "^2.8.5",

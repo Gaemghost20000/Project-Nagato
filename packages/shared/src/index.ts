@@ -1,6 +1,5 @@
-// This package will contain shared utilities, types, and constants.
-// For example:
-// export const DEFAULT_API_TIMEOUT = 10000;
-// export type UserProfile = { id: string; name: string; email: string };
+// This file serves as the entry point for the @ai-dev-agent/shared package.
+// It exports all shared utilities, types, and constants.
 
-export {}; // Ensures this is treated as a module, even if empty for now.
+// Export all WebSocket message types and interfaces
+export * from './types';

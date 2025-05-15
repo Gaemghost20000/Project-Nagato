@@ -7,6 +7,8 @@ import { createServer, IncomingMessage } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ChatService, ILLMGatewayService, ChatMessage, ChatSession } from './chat.service';
 import { v4 as uuidv4 } from 'uuid'; // For generating unique connection IDs if needed
+import { ToolRegistry } from './tool.registry'; // Added
+import { ToolRequestMessage } from '@ai-dev-agent/shared'; // Added
 
 // Helper type guard to check if an object is an AsyncIterable
 function isAsyncIterable<T>(item: any): item is AsyncIterable<T> {
@@ -41,93 +43,142 @@ class LLMGatewayServiceImpl implements ILLMGatewayService {
    * @returns An AsyncIterable that yields response chunks (strings) from the LLM.
    */
   async *generateResponse(prompt: string): AsyncIterable<string> {
+    const gatewayUrl = `${this.llmGatewayUrl}/v1/chat/completions`;
+    const requestBody = {
+      messages: [{ role: 'user', content: prompt }],
+      stream: true,
+    };
+
+    console.log(`[LLMGatewayService] Attempting to fetch from: ${gatewayUrl}`);
+    console.log(`[LLMGatewayService] Request body: ${JSON.stringify(requestBody, null, 2)}`);
+    // Existing log:
     console.log(`[LLMGatewayService] Sending prompt to LLM Gateway: "${prompt}"`);
-    const response = await fetch(`${this.llmGatewayUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream', // Important for SSE
-      },
-      body: JSON.stringify({
-        // Assuming a common payload structure, adjust if llm-gateway expects differently
-        messages: [{ role: 'user', content: prompt }],
-        stream: true,
-      }),
-    });
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(`[LLMGatewayService] Error from LLM Gateway: ${response.status} - ${response.statusText}`, errorBody);
-      throw new Error(`LLM Gateway request failed with status ${response.status}: ${errorBody}`);
-    }
-
-    if (!response.body) {
-      console.error('[LLMGatewayService] Response body is null');
-      throw new Error('Response body is null from LLM Gateway');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
+    let responseFromFetch;
     try {
-      console.log('[LLMGatewayService] Starting to read stream from LLM Gateway...');
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          console.log('[LLMGatewayService] Stream ended.');
-          if (buffer.trim().length > 0) {
-            console.warn('[LLMGatewayService] Trailing data in buffer after stream ended:', buffer);
-          }
-          break;
-        }
+      responseFromFetch = await fetch(gatewayUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream', // Important for SSE
+        },
+        body: JSON.stringify(requestBody),
+      });
 
-        buffer += decoder.decode(value, { stream: true });
-        
-        let lineEndIndex;
-        while ((lineEndIndex = buffer.indexOf('\n')) >= 0) {
-          const line = buffer.substring(0, lineEndIndex).trim();
-          buffer = buffer.substring(lineEndIndex + 1);
+      if (!responseFromFetch.ok) {
+        const errorBody = await responseFromFetch.text();
+        console.error(`[LLMGatewayService] Error from LLM Gateway: ${responseFromFetch.status} - ${responseFromFetch.statusText}`, errorBody);
+        throw new Error(`LLM Gateway request failed with status ${responseFromFetch.status}: ${errorBody}`);
+      }
 
-          if (line.startsWith('data: ')) {
-            const jsonData = line.substring('data: '.length).trim();
-            if (jsonData === '[DONE]') {
-              console.log('[LLMGatewayService] Received [DONE] signal from stream.');
-              return; // End the generator
+      if (!responseFromFetch.body) {
+        console.error('[LLMGatewayService] Response body is null');
+        throw new Error('Response body is null from LLM Gateway');
+      }
+
+      const reader = responseFromFetch.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      try {
+        console.log('[LLMGatewayService] Starting to read stream from LLM Gateway...');
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            console.log('[LLMGatewayService] Stream ended.');
+            if (buffer.trim().length > 0) {
+              console.warn('[LLMGatewayService] Trailing data in buffer after stream ended:', buffer);
             }
-            if (jsonData) {
-              try {
-                const parsed = JSON.parse(jsonData);
-                // Assuming OpenAI-compatible stream format
-                if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
-                  if (typeof parsed.choices[0].delta.content === 'string') {
-                    // console.log(`[LLMGatewayService] Yielding chunk: "${parsed.choices[0].delta.content}"`);
-                    yield parsed.choices[0].delta.content;
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          
+          let lineEndIndex;
+          while ((lineEndIndex = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.substring(0, lineEndIndex).trim();
+            buffer = buffer.substring(lineEndIndex + 1);
+
+            if (line.startsWith('data: ')) {
+              const jsonData = line.substring('data: '.length).trim();
+              if (jsonData === '[DONE]') {
+                console.log('[LLMGatewayService] Received [DONE] signal from stream.');
+                return; // End the generator
+              }
+              if (jsonData) {
+                try {
+                  const parsed = JSON.parse(jsonData);
+                  // Assuming OpenAI-compatible stream format
+                  if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
+                    if (typeof parsed.choices[0].delta.content === 'string') {
+                      yield parsed.choices[0].delta.content;
+                    }
                   }
-                  // finish_reason can also be checked here if needed
+                } catch (e: any) {
+                  console.error('[LLMGatewayService] Error parsing SSE JSON data:', jsonData, e.message);
                 }
-              } catch (e: any) {
-                console.error('[LLMGatewayService] Error parsing SSE JSON data:', jsonData, e.message);
               }
             }
           }
         }
+      } catch (streamError: any) {
+        console.error('[LLMGatewayService] Error reading stream:', streamError.message, streamError.stack);
+        throw streamError; // Re-throw stream reading error to be caught by the outer catch
+      } finally {
+        if (reader && !reader.closed) {
+          reader.cancel().catch(e => console.error('[LLMGatewayService] Error cancelling reader:', e));
+        }
+        console.log('[LLMGatewayService] Stream processing finished.');
       }
-    } catch (error: any) {
-      console.error('[LLMGatewayService] Error reading stream:', error.message, error.stack);
-      throw error;
-    } finally {
-      if (reader && !reader.closed) {
-        reader.cancel().catch(e => console.error('[LLMGatewayService] Error cancelling reader:', e));
+    } catch (fetchError: any) {
+      console.error(`[LLMGatewayService] Fetch to LLM Gateway failed. URL: ${gatewayUrl}, Body: ${JSON.stringify(requestBody, null, 2)}`, fetchError);
+      
+      let detailsString = "{}";
+      const errorToLog = fetchError as any; // Cast to any to safely access potential 'cause'
+
+      if (errorToLog?.cause && typeof errorToLog.cause === 'object') {
+          try {
+              detailsString = JSON.stringify(errorToLog.cause, Object.getOwnPropertyNames(errorToLog.cause));
+          } catch (e) {
+              const stringifyErrorMessage = e instanceof Error ? e.message : String(e);
+              detailsString = `{ "cause_error": "Could not stringify error cause: ${stringifyErrorMessage}" }`;
+          }
+      } else if (fetchError instanceof Error) {
+          // Standard error properties; include stack for more detail if desired
+          const errorObject: { name: string; message: string; stack?: string } = {
+            name: fetchError.name,
+            message: fetchError.message,
+          };
+          if (fetchError.stack) {
+            errorObject.stack = fetchError.stack;
+          }
+          try {
+            detailsString = JSON.stringify(errorObject);
+          } catch (e) {
+            const stringifyErrorMessage = e instanceof Error ? e.message : String(e);
+            // Fallback if stringifying the error object itself fails
+            detailsString = `{ "name": "${fetchError.name}", "message": "Error object stringification failed: ${stringifyErrorMessage}" }`;
+          }
+      } else {
+          // If fetchError is not an Error instance, try to stringify it directly
+          try {
+              detailsString = JSON.stringify(fetchError);
+          } catch (e) {
+              const stringifyErrorMessage = e instanceof Error ? e.message : String(e);
+              detailsString = `{ "error_details": "Could not stringify non-Error object: ${stringifyErrorMessage}" }`;
+          }
       }
-      console.log('[LLMGatewayService] Stream processing finished.');
+      // Ensure fetchError.message is accessed safely if fetchError might not be an Error instance
+      const baseErrorMessage = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      throw new Error(`Failed to fetch from LLM Gateway: ${baseErrorMessage}. Details: ${detailsString}`);
     }
   }
 }
 
 // --- Service Initialization ---
 const llmGatewayService: ILLMGatewayService = new LLMGatewayServiceImpl();
-const chatService = new ChatService(llmGatewayService);
+const toolRegistry = new ToolRegistry(); // Instantiate ToolRegistry
+const chatService = new ChatService(llmGatewayService, toolRegistry); // Pass toolRegistry to ChatService
 
 // --- Express App Setup ---
 const app = express();
@@ -135,8 +186,9 @@ const app = express();
 // CORS Configuration
 const allowedOrigins = [
   'http://localhost:3000', // Default Next.js dev port
-  'http://192.168.0.168:3000', // As seen in the screenshot
-  'http://192.168.0.168:3001', // Frontend origin from error log
+  'http://192.168.0.168:3000', // Default Next.js dev port (network)
+  'http://localhost:3003', // Actual frontend port from logs
+  'http://192.168.0.168:3003', // Actual frontend port from logs (network)
   // Add any other origins you need to support, or use environment variables
 ];
 
@@ -361,7 +413,18 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
       return;
     }
 
-    const { type, sessionId, content, sessionToken } = parsedMessage; // sessionToken for future auth
+    // Destructure all potential fields from known message types
+    const {
+      type,
+      sessionId,
+      content,
+      // sessionToken, // Not currently used, but parsed
+      toolName,       // For tool_request
+      toolCallId,     // For tool_request and tool_response
+      arguments: toolArgs, // For tool_request (renamed from 'arguments' to avoid keyword clash)
+      // response: toolResp, // For tool_response
+      // isError: toolIsError // For tool_response
+    } = parsedMessage;
 
     if (type === 'chat_message' && sessionId && content) {
       try {
@@ -370,46 +433,66 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
 
         if (isAsyncIterable<string>(streamResult)) {
           console.log(`[WebSocket] Streaming LLM response for session ${sessionId} to client ${connectionId}`);
-          // streamResult is now correctly typed as AsyncIterable<string>
           for await (const chunk of streamResult) {
             if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'llm_chunk', sessionId, content_chunk: chunk }));
+              ws.send(JSON.stringify({ type: 'llm_chunk', sessionId, content_chunk: chunk, timestamp: new Date().toISOString() }));
             } else {
               console.warn(`[WebSocket] Client ${connectionId} disconnected during stream for session ${sessionId}. Aborting.`);
               break;
             }
           }
           if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'llm_stream_end', sessionId }));
+            ws.send(JSON.stringify({ type: 'llm_stream_end', sessionId, timestamp: new Date().toISOString() }));
             console.log(`[WebSocket] Finished streaming LLM response for session ${sessionId} to client ${connectionId}`);
           }
         } else {
-          // This case implies streamResult is ChatMessage.
-          // This should not happen when sender is 'user' as per ChatService logic.
-          const actualMessage = streamResult as ChatMessage; // Cast for logging purposes
+          const actualMessage = streamResult as ChatMessage;
           console.error(`[WebSocket] Expected a stream from ChatService for user message, but received a ChatMessage. Session: ${sessionId}. Message content: "${actualMessage.content}"`);
           if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'error', sessionId, error: 'Internal error: Expected a stream for agent response but received a single message object.' }));
+            ws.send(JSON.stringify({ type: 'error', sessionId, error: 'Internal error: Expected a stream for agent response but received a single message object.', timestamp: new Date().toISOString() }));
           }
         }
       } catch (error: any) {
         console.error(`[WebSocket] Error processing chat_message for session ${sessionId} from ${connectionId}:`, error.message, error.stack);
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'error', sessionId, error: `Failed to process message: ${error.message}` }));
+          ws.send(JSON.stringify({ type: 'error', sessionId, error: `Failed to process message: ${error.message}`, timestamp: new Date().toISOString() }));
+        }
+      }
+    } else if (type === 'tool_request' && sessionId && toolName && toolCallId && toolArgs !== undefined) {
+      console.log(`[WebSocket] Received tool_request from ${connectionId}: ${JSON.stringify(parsedMessage)}`);
+      try {
+        // Ensure parsedMessage conforms to ToolRequestMessage before passing
+        const toolRequestMsg = parsedMessage as ToolRequestMessage;
+        const toolResponse = await chatService.handleToolRequest(toolRequestMsg);
+        
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(toolResponse));
+          console.log(`[WebSocket] Sent tool_response (or error) for ${toolCallId} to client ${connectionId}`);
+        }
+      } catch (error: any) {
+        // This catch block is for unexpected errors within the WebSocket handler itself,
+        // not for errors from the tool execution (which ChatService.handleToolRequest handles).
+        console.error(`[WebSocket] Critical error handling tool_request for session ${sessionId}, tool ${toolName} from ${connectionId}:`, error.message, error.stack);
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'error',
+            sessionId,
+            toolCallId, // Include if available
+            error: `Server-side error processing tool request: ${error.message}`,
+            timestamp: new Date().toISOString()
+          }));
         }
       }
     } else if (type === 'session_init' && sessionId) {
-        // Example: Client signals it's ready for a session or wants to confirm session
         console.log(`[WebSocket] Client ${connectionId} initialized/confirmed session ${sessionId}`);
-        // Optionally, send back session details or a confirmation
         if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'session_confirmed', sessionId }));
+            ws.send(JSON.stringify({ type: 'session_confirmed', sessionId, timestamp: new Date().toISOString() }));
         }
     }
     else {
       console.warn(`[WebSocket] Received unhandled message type or malformed message from ${connectionId}:`, parsedMessage);
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'error', error: 'Unhandled message type or malformed message.' }));
+        ws.send(JSON.stringify({ type: 'error', error: 'Unhandled message type or malformed message.', timestamp: new Date().toISOString() }));
       }
     }
   });
@@ -424,7 +507,7 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
 
   // Send a welcome message or connection confirmation
   if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'connection_ack', connectionId, message: 'Successfully connected to Chat WebSocket.' }));
+    ws.send(JSON.stringify({ type: 'connection_ack', connectionId, message: 'Successfully connected to Chat WebSocket.', timestamp: new Date().toISOString() }));
   }
 });
 
