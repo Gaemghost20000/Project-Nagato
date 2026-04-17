@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.bak
+
+# Node (if any TS packages come back)
+node_modules/
+dist/
+.next/
+
+# Env files
+.env
+.env.local
+!.env.example
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+*.swp

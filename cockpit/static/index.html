@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Cockpit</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #1a1a2e;
+  --card: #16213e;
+  --accent: #0f3460;
+  --highlight: #e94560;
+  --green: #00ff88;
+  --white: #e0e0e0;
+  --red: #ff4444;
+  --yellow: #ffcc00;
+  --cyan: #00d4ff;
+  --dim: #555;
+  --font-mono: 'Courier New', Courier, monospace;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+html, body { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: var(--font-ui);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* ─── HEADER ─── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--card);
+  border-bottom: 2px solid var(--accent);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.header-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-title .icon { font-size: 1.3rem; }
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+.live-dot {
+  width: 8px; height: 8px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: pulse-dot 1.5s infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px var(--green); }
+  50% { opacity: 0.3; box-shadow: 0 0 10px var(--green); }
+}
+.header-timestamp {
+  font-size: 0.8rem;
+  color: var(--dim);
+  font-family: var(--font-mono);
+}
+
+/* ─── AGENT SELECTOR ─── */
+.agent-selector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: rgba(22,33,62,0.6);
+}
+.agent-selector label {
+  font-size: 0.85rem;
+  color: var(--dim);
+}
+.agent-btn {
+  padding: 6px 18px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--white);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.3s;
+}
+.agent-btn:hover { border-color: var(--highlight); }
+.agent-btn.active {
+  background: var(--highlight);
+  border-color: var(--highlight);
+  color: #fff;
+  font-weight: 600;
+}
+.agent-btn.side-by-side {
+  border-color: var(--cyan);
+}
+.agent-btn.side-by-side.active {
+  background: var(--cyan);
+  color: #1a1a2e;
+}
+
+/* ─── MAIN GRID ─── */
+.dashboard {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto auto auto;
+  gap: 12px;
+  padding: 12px 20px 20px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+/* ─── CARD ─── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.3s;
+}
+.card:hover { border-color: var(--highlight); }
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(15,52,96,0.4);
+  border-bottom: 1px solid var(--accent);
+  cursor: pointer;
+  user-select: none;
+}
+.card-header h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--cyan);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.card-header .toggle-arrow {
+  font-size: 0.7rem;
+  color: var(--dim);
+  transition: transform 0.3s;
+}
+.card-header .toggle-arrow.collapsed { transform: rotate(-90deg); }
+.card-body { padding: 14px; }
+.card-body.collapsed { display: none; }
+
+/* ─── TERMINAL ─── */
+.terminal-card {
+  grid-column: 1 / 2;
+  grid-row: 1 / 4;
+}
+.terminal-container {
+  background: #0d0d1a;
+  border-radius: 6px;
+  padding: 10px;
+  height: 420px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  position: relative;
+  border: 1px solid #222;
+}
+.terminal-container::-webkit-scrollbar { width: 6px; }
+.terminal-container::-webkit-scrollbar-track { background: transparent; }
+.terminal-container::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
+
+.term-line { white-space: pre-wrap; word-break: break-all; }
+.term-cmd { color: var(--green); }
+.term-output { color: var(--white); }
+.term-error { color: var(--red); }
+.term-warn { color: var(--yellow); }
+.term-info { color: var(--cyan); }
+.term-dim { color: var(--dim); }
+
+.cursor-blink {
+  display: inline-block;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ─── STATUS CARDS ─── */
+.status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.agent-status-card {
+  background: rgba(15,52,96,0.3);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 12px;
+  transition: all 0.4s ease;
+}
+.agent-status-card.status-active {
+  border-color: var(--green);
+  box-shadow: 0 0 12px rgba(0,255,136,0.1);
+}
+.agent-status-card.status-idle {
+  border-color: var(--dim);
+}
+.agent-status-card.status-error {
+  border-color: var(--red);
+  box-shadow: 0 0 12px rgba(255,68,68,0.15);
+}
+.agent-status-card h4 {
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.status-badge {
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+.status-badge.active { background: rgba(0,255,136,0.15); color: var(--green); }
+.status-badge.idle { background: rgba(85,85,85,0.3); color: var(--dim); }
+.status-badge.error { background: rgba(255,68,68,0.15); color: var(--red); }
+
+.status-detail {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(15,52,96,0.5);
+}
+.status-detail:last-child { border-bottom: none; }
+.status-label { color: var(--dim); }
+.status-value { color: var(--white); font-family: var(--font-mono); }
+.status-task {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--cyan);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── METRICS ─── */
+.metrics-container { grid-column: 1 / -1; }
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.metric-item label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--dim);
+  margin-bottom: 4px;
+}
+.metric-item label span { color: var(--white); font-family: var(--font-mono); }
+.progress-bar {
+  height: 8px;
+  background: rgba(15,52,96,0.6);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.8s ease, background 0.3s;
+  background: var(--cyan);
+}
+.progress-fill.warn { background: var(--yellow); }
+.progress-fill.crit { background: var(--red); }
+
+.metrics-sub-header {
+  font-size: 0.7rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 10px 0 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(15,52,96,0.3);
+}
+.metrics-sub-header:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+
+/* ─── TASK QUEUE ─── */
+.task-list { list-style: none; }
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  font-size: 0.78rem;
+  border-bottom: 1px solid rgba(15,52,96,0.3);
+  animation: fadeIn 0.3s ease;
+}
+.task-item:last-child { border-bottom: none; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.task-icon { font-size: 0.7rem; }
+.task-icon.pending { color: var(--yellow); }
+.task-icon.in-progress { color: var(--cyan); animation: pulse-dot 1.5s infinite; }
+.task-icon.completed { color: var(--green); }
+.task-text { flex: 1; color: var(--white); }
+.task-agent {
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(15,52,96,0.5);
+  color: var(--dim);
+}
+
+/* ─── QUICK ACTIONS ─── */
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.action-btn {
+  padding: 10px;
+  border: 1px solid var(--accent);
+  background: rgba(15,52,96,0.3);
+  color: var(--white);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-family: var(--font-ui);
+  transition: all 0.2s;
+  text-align: center;
+}
+.action-btn:hover {
+  background: var(--accent);
+  border-color: var(--cyan);
+  transform: translateY(-1px);
+}
+.action-btn:active {
+  transform: translateY(0);
+  background: var(--highlight);
+}
+.action-btn .btn-icon { margin-right: 4px; }
+.action-btn.danger:hover {
+  border-color: var(--red);
+  background: rgba(255,68,68,0.15);
+}
+
+/* ─── CODE PANEL ─── */
+.code-panel-container { grid-column: 1 / -1; }
+.code-editor {
+  width: 100%;
+  min-height: 120px;
+  background: #0d0d1a;
+  border: 1px solid #222;
+  border-radius: 6px;
+  color: var(--green);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 10px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.3s;
+}
+.code-editor:focus { border-color: var(--cyan); }
+.code-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.code-send-btn {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid var(--accent);
+  background: rgba(15,52,96,0.4);
+  color: var(--white);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+}
+.code-send-btn:hover { background: var(--accent); border-color: var(--cyan); }
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 900px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+    padding: 8px 10px 16px;
+  }
+  .terminal-card { grid-column: 1; grid-row: auto; }
+  .metrics-container { grid-column: 1; }
+  .code-panel-container { grid-column: 1; }
+  .metrics-grid { grid-template-columns: 1fr; }
+  .status-grid { grid-template-columns: 1fr; }
+  .terminal-container { height: 300px; }
+  .header { padding: 10px 14px; }
+}
+@media (max-width: 480px) {
+  .actions-grid { grid-template-columns: 1fr; }
+  .header-title { font-size: 1.1rem; }
+}
+
+/* ─── NOTIFICATION TOAST ─── */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 18px;
+  background: var(--card);
+  border: 1px solid var(--cyan);
+  border-radius: 8px;
+  color: var(--white);
+  font-size: 0.8rem;
+  z-index: 999;
+  animation: slideInToast 0.3s ease, fadeOutToast 0.5s ease 2.5s forwards;
+  pointer-events: none;
+}
+@keyframes slideInToast {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes fadeOutToast {
+  to { opacity: 0; transform: translateY(10px); }
+}
+
+/* ─── VIEW MODE ─── */
+.view-single .status-grid { grid-template-columns: 1fr; }
+.view-single .metrics-grid { grid-template-columns: 1fr; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-title">
+    <span class="icon">🛸</span> Agent Cockpit
+    <span class="live-indicator"><span class="live-dot"></span> Live</span>
+  </div>
+  <div class="header-timestamp" id="timestamp">--:--:--</div>
+</div>
+
+<!-- AGENT SELECTOR -->
+<div class="agent-selector">
+  <label>View:</label>
+  <button class="agent-btn active" data-view="both" onclick="setView('both')">⬡ Both</button>
+  <button class="agent-btn" data-view="hermes" onclick="setView('hermes')">Hermes</button>
+  <button class="agent-btn" data-view="nagato" onclick="setView('nagato')">Nagato</button>
+</div>
+
+<!-- DASHBOARD -->
+<div class="dashboard" id="dashboard">
+
+  <!-- TERMINAL MONITOR -->
+  <div class="card terminal-card">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h3>⌨ Terminal Monitor</h3>
+      <span class="toggle-arrow">▼</span>
+    </div>
+    <div class="card-body">
+      <div class="terminal-container" id="terminal">
+        <div class="term-line term-dim">[Agent Cockpit] Connecting to backend...</div>
+        <div class="term-line term-dim"><span class="cursor-blink">█</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AGENT STATUS -->
+  <div class="card">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h3>🤖 Agent Status</h3>
+      <span class="toggle-arrow">▼</span>
+    </div>
+    <div class="card-body">
+      <div class="status-grid" id="statusGrid">
+        <!-- Hermes -->
+        <div class="agent-status-card status-idle" id="status-hermes">
+          <h4>Hermes <span class="status-badge idle">idle</span></h4>
+          <div class="status-detail"><span class="status-label">Model</span><span class="status-value" id="hermes-model">--</span></div>
+          <div class="status-detail"><span class="status-label">Session</span><span class="status-value" id="hermes-session">00:00:00</span></div>
+          <div class="status-detail"><span class="status-label">Tokens</span><span class="status-value" id="hermes-tokens">~0</span></div>
+          <div class="status-task" id="hermes-task">Waiting for task...</div>
+        </div>
+        <!-- Nagato -->
+        <div class="agent-status-card status-idle" id="status-nagato">
+          <h4>Nagato <span class="status-badge idle">idle</span></h4>
+          <div class="status-detail"><span class="status-label">Model</span><span class="status-value" id="nagato-model">--</span></div>
+          <div class="status-detail"><span class="status-label">Session</span><span class="status-value" id="nagato-session">00:00:00</span></div>
+          <div class="status-detail"><span class="status-label">Tokens</span><span class="status-value" id="nagato-tokens">~0</span></div>
+          <div class="status-task" id="nagato-task">Waiting for task...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SYSTEM METRICS -->
+  <div class="card metrics-container">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h3>📊 System Metrics</h3>
+      <span class="toggle-arrow">▼</span>
+    </div>
+    <div class="card-body">
+      <div class="metrics-grid" id="metricsGrid">
+        <div class="metric-item">
+          <div class="metrics-sub-header">Hermes</div>
+          <label>CPU <span id="hermes-cpu">0%</span></label>
+          <div class="progress-bar"><div class="progress-fill" id="hermes-cpu-bar" style="width:0%"></div></div>
+          <label style="margin-top:6px">Memory <span id="hermes-mem">0%</span></label>
+          <div class="progress-bar"><div class="progress-fill" id="hermes-mem-bar" style="width:0%"></div></div>
+          <label style="margin-top:6px">Disk <span id="hermes-disk">0%</span></label>
+          <div class="progress-bar"><div class="progress-fill" id="hermes-disk-bar" style="width:0%"></div></div>
+        </div>
+        <div class="metric-item">
+          <div class="metrics-sub-header">Nagato</div>
+          <label>CPU <span id="nagato-cpu">0%</span></label>
+          <div class="progress-bar"><div class="progress-fill" id="nagato-cpu-bar" style="width:0%"></div></div>
+          <label style="margin-top:6px">Memory <span id="nagato-mem">0%</span></label>
+          <div class="progress-bar"><div class="progress-fill" id="nagato-mem-bar" style="width:0%"></div></div>
+          <label style="margin-top:6px">Disk <span id="nagato-disk">0%</span></label>
+          <div class="progress-bar"><div class="progress-fill" id="nagato-disk-bar" style="width:0%"></div></div>
+        </div>
+        <div class="metric-item">
+          <div class="metrics-sub-header">System</div>
+          <label>CPU <span id="sys-cpu">0%</span></label>
+          <div class="progress-bar"><div class="progress-fill" id="sys-cpu-bar" style="width:0%"></div></div>
+          <label style="margin-top:6px">Memory <span id="sys-mem">0%</span></label>
+          <div class="progress-bar"><div class="progress-fill" id="sys-mem-bar" style="width:0%"></div></div>
+          <label style="margin-top:6px">Disk <span id="sys-disk">0%</span></label>
+          <div class="progress-bar"><div class="progress-fill" id="sys-disk-bar" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TASK QUEUE -->
+  <div class="card">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h3>📋 Task Queue</h3>
+      <span class="toggle-arrow">▼</span>
+    </div>
+    <div class="card-body">
+      <ul class="task-list" id="taskList">
+        <li class="task-item"><span class="task-icon pending">◉</span><span class="task-text">Waiting for tasks...</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- QUICK ACTIONS -->
+  <div class="card">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h3>⚡ Quick Actions</h3>
+      <span class="toggle-arrow">▼</span>
+    </div>
+    <div class="card-body">
+      <div class="actions-grid">
+        <button class="action-btn" onclick="sendAction('status')"><span class="btn-icon">📡</span> Status</button>
+        <button class="action-btn" onclick="sendAction('what are you working on?')"><span class="btn-icon">💭</span> What's Up?</button>
+        <button class="action-btn" onclick="sendAction('pause')"><span class="btn-icon">⏸</span> Pause</button>
+        <button class="action-btn" onclick="sendAction('resume')"><span class="btn-icon">▶</span> Resume</button>
+        <button class="action-btn" onclick="sendAction('clear terminal')"><span class="btn-icon">🧹</span> Clear Term</button>
+        <button class="action-btn danger" onclick="sendAction('stop')"><span class="btn-icon">🛑</span> Stop All</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CODE PANEL -->
+  <div class="card code-panel-container">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h3>📝 Code Panel</h3>
+      <span class="toggle-arrow collapsed">▼</span>
+    </div>
+    <div class="card-body collapsed">
+      <textarea class="code-editor" id="codeEditor" placeholder="// Paste or type code snippets here...
+// Use 'Send to Agent' buttons below to share."></textarea>
+      <div class="code-actions">
+        <button class="code-send-btn" onclick="sendCode('hermes')">🚀 Send to Hermes</button>
+        <button class="code-send-btn" onclick="sendCode('nagato')">🚀 Send to Nagato</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  AGENT COCKPIT — Frontend Logic
+// ═══════════════════════════════════════════
+
+const MAX_TERMINAL_LINES = 50;
+const METRICS_INTERVAL = 5000;
+const WS_RECONNECT_DELAY = 3000;
+
+// ─── State ───
+const state = {
+  ws: null,
+  wsConnected: false,
+  activeView: 'both',
+  agents: {
+    hermes: { status: 'idle', model: '--', sessionStart: Date.now(), tokens: 0, task: 'Waiting for task...' },
+    nagato: { status: 'idle', model: '--', sessionStart: Date.now(), tokens: 0, task: 'Waiting for task...' }
+  },
+  tasks: [],
+  metrics: {
+    hermes: { cpu: 0, mem: 0, disk: 0 },
+    nagato: { cpu: 0, mem: 0, disk: 0 },
+    sys: { cpu: 0, mem: 0, disk: 0 }
+  }
+};
+
+// ─── Timestamp ───
+function updateTimestamp() {
+  const now = new Date();
+  document.getElementById('timestamp').textContent =
+    now.toLocaleTimeString('en-US', { hour12: false }) + '.' +
+    String(now.getMilliseconds()).padStart(3, '0');
+}
+setInterval(updateTimestamp, 100);
+updateTimestamp();
+
+// ─── Session Duration ───
+function formatDuration(ms) {
+  const s = Math.floor(ms / 1000);
+  const h = String(Math.floor(s / 3600)).padStart(2, '0');
+  const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  const sec = String(s % 60).padStart(2, '0');
+  return `${h}:${m}:${sec}`;
+}
+function updateSessionDurations() {
+  ['hermes', 'nagato'].forEach(agent => {
+    const el = document.getElementById(`${agent}-session`);
+    if (el) el.textContent = formatDuration(Date.now() - state.agents[agent].sessionStart);
+  });
+}
+setInterval(updateSessionDurations, 1000);
+
+// ─── Terminal ───
+function addTerminalLine(text, type = 'output') {
+  const terminal = document.getElementById('terminal');
+  // Remove cursor
+  const cursor = terminal.querySelector('.cursor-blink');
+  if (cursor) cursor.parentElement.remove();
+
+  const line = document.createElement('div');
+  line.className = `term-line term-${type}`;
+  line.textContent = text;
+  terminal.appendChild(line);
+
+  // Add cursor
+  const cursorLine = document.createElement('div');
+  cursorLine.className = 'term-line term-dim';
+  cursorLine.innerHTML = '<span class="cursor-blink">█</span>';
+  terminal.appendChild(cursorLine);
+
+  // Trim to MAX_TERMINAL_LINES
+  const lines = terminal.querySelectorAll('.term-line');
+  if (lines.length > MAX_TERMINAL_LINES + 2) {
+    for (let i = 0; i < lines.length - MAX_TERMINAL_LINES - 2; i++) {
+      lines[i].remove();
+    }
+  }
+
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function classifyLine(text) {
+  if (/^(error|ERR|fatal|fail|exception)/i.test(text)) return 'error';
+  if (/^(warn|WARNING)/i.test(text)) return 'warn';
+  if (/^\$|^>|^#\s|^\[cmd\]/i.test(text)) return 'cmd';
+  if (/^\[info\]|^ℹ/i.test(text)) return 'info';
+  return 'output';
+}
+
+// ─── WebSocket ───
+function connectWebSocket() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${location.host}/ws`;
+
+  try {
+    state.ws = new WebSocket(wsUrl);
+  } catch (e) {
+    addTerminalLine('[Cockpit] WebSocket not available, using demo mode.', 'warn');
+    startDemoMode();
+    return;
+  }
+
+  state.ws.onopen = () => {
+    state.wsConnected = true;
+    addTerminalLine('[Cockpit] ✓ Connected to backend.', 'info');
+  };
+
+  state.ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      handleWSMessage(data);
+    } catch {
+      addTerminalLine(event.data, classifyLine(event.data));
+    }
+  };
+
+  state.ws.onclose = () => {
+    state.wsConnected = false;
+    addTerminalLine('[Cockpit] ✗ Disconnected. Reconnecting...', 'warn');
+    setTimeout(connectWebSocket, WS_RECONNECT_DELAY);
+  };
+
+  state.ws.onerror = () => {
+    addTerminalLine('[Cockpit] WebSocket error, switching to demo mode.', 'warn');
+    startDemoMode();
+  };
+}
+
+function handleWSMessage(data) {
+  switch (data.type) {
+    case 'terminal':
+      addTerminalLine(data.line, data.class || classifyLine(data.line));
+      break;
+    case 'status':
+      updateAgentStatus(data.agent, data);
+      break;
+    case 'metrics':
+      if (data.agent) updateMetrics(data.agent, data);
+      else if (data.sys) updateMetrics('sys', data.sys);
+      break;
+    case 'task':
+      updateTask(data);
+      break;
+    case 'model':
+      state.agents[data.agent].model = data.model;
+      document.getElementById(`${data.agent}-model`).textContent = data.model;
+      break;
+    default:
+      if (data.line) addTerminalLine(data.line, classifyLine(data.line));
+  }
+}
+
+function wsSend(data) {
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify(data));
+  }
+}
+
+// ─── Agent Status ───
+function updateAgentStatus(agent, data) {
+  if (!state.agents[agent]) return;
+  const a = state.agents[agent];
+  if (data.status) a.status = data.status;
+  if (data.task) a.task = data.task;
+  if (data.tokens) a.tokens = data.tokens;
+  if (data.model) a.model = data.model;
+
+  const card = document.getElementById(`status-${agent}`);
+  const badge = card.querySelector('.status-badge');
+
+  card.className = `agent-status-card status-${a.status}`;
+  badge.className = `status-badge ${a.status}`;
+  badge.textContent = a.status;
+  document.getElementById(`${agent}-model`).textContent = a.model;
+  document.getElementById(`${agent}-tokens`).textContent = `~${a.tokens.toLocaleString()}`;
+  document.getElementById(`${agent}-task`).textContent = a.task;
+}
+
+// ─── Metrics ───
+function updateMetrics(agent, data) {
+  const metrics = state.metrics[agent] || (state.metrics[agent] = {});
+  ['cpu', 'mem', 'disk'].forEach(key => {
+    if (data[key] !== undefined) {
+      metrics[key] = data[key];
+      const val = Math.round(data[key]);
+      const el = document.getElementById(`${agent}-${key}`);
+      const bar = document.getElementById(`${agent}-${key}-bar`);
+      if (el) el.textContent = `${val}%`;
+      if (bar) {
+        bar.style.width = `${val}%`;
+        bar.className = 'progress-fill' + (val > 90 ? ' crit' : val > 70 ? ' warn' : '');
+      }
+    }
+  });
+}
+
+function setProgressBarClass(bar, value) {
+  bar.className = 'progress-fill' + (value > 90 ? ' crit' : value > 70 ? ' warn' : '');
+}
+
+// ─── Fetch Metrics (fallback polling) ───
+async function fetchMetrics() {
+  try {
+    const res = await fetch('/api/metrics');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.hermes) updateMetrics('hermes', data.hermes);
+      if (data.nagato) updateMetrics('nagato', data.nagato);
+      if (data.sys) updateMetrics('sys', data.sys);
+    }
+  } catch { /* silent */ }
+
+  try {
+    const res = await fetch('/api/status');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.hermes) updateAgentStatus('hermes', data.hermes);
+      if (data.nagato) updateAgentStatus('nagato', data.nagato);
+    }
+  } catch { /* silent */ }
+
+  try {
+    const res = await fetch('/api/tasks');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) renderTasks(data);
+    }
+  } catch { /* silent */ }
+}
+setInterval(fetchMetrics, METRICS_INTERVAL);
+setTimeout(fetchMetrics, 1000);
+
+// ─── Tasks ───
+function updateTask(data) {
+  const idx = state.tasks.findIndex(t => t.id === data.id);
+  if (idx >= 0) state.tasks[idx] = { ...state.tasks[idx], ...data };
+  else state.tasks.push(data);
+  renderTasks(state.tasks);
+}
+
+function renderTasks(tasks) {
+  const list = document.getElementById('taskList');
+  if (!tasks.length) {
+    list.innerHTML = '<li class="task-item"><span class="task-icon pending">◉</span><span class="task-text">No tasks in queue</span></li>';
+    return;
+  }
+  list.innerHTML = tasks.map(t => {
+    const iconClass = t.status === 'completed' ? 'completed' : t.status === 'in-progress' ? 'in-progress' : 'pending';
+    const icon = t.status === 'completed' ? '✓' : t.status === 'in-progress' ? '◉' : '○';
+    return `<li class="task-item">
+      <span class="task-icon ${iconClass}">${icon}</span>
+      <span class="task-text">${escapeHtml(t.text || t.description || t.name || 'Task')}</span>
+      ${t.agent ? `<span class="task-agent">${t.agent}</span>` : ''}
+    </li>`;
+  }).join('');
+  state.tasks = tasks;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ─── Quick Actions ───
+function sendAction(action) {
+  addTerminalLine(`$ ${action}`, 'cmd');
+  wsSend({ type: 'command', command: action, agent: state.activeView === 'both' ? 'all' : state.activeView });
+
+  // Try HTTP fallback
+  fetch('/api/command', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command: action, agent: state.activeView === 'both' ? 'all' : state.activeView })
+  }).catch(() => {});
+
+  showToast(`Sent: ${action}`);
+}
+
+// ─── Code Panel ───
+function sendCode(agent) {
+  const code = document.getElementById('codeEditor').value;
+  if (!code.trim()) { showToast('Code panel is empty'); return; }
+  addTerminalLine(`[Code → ${agent}] Sending snippet...`, 'info');
+  wsSend({ type: 'code', agent, code });
+  fetch('/api/code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent, code })
+  }).catch(() => {});
+  showToast(`Code sent to ${agent}`);
+}
+
+// ─── View Toggle ───
+function setView(view) {
+  state.activeView = view;
+  document.querySelectorAll('.agent-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === view);
+  });
+  const dash = document.getElementById('dashboard');
+  if (view === 'hermes' || view === 'nagato') {
+    dash.classList.add('view-single');
+    // Highlight selected agent
+    document.getElementById('status-hermes').style.opacity = view === 'hermes' ? '1' : '0.3';
+    document.getElementById('status-nagato').style.opacity = view === 'nagato' ? '1' : '0.3';
+  } else {
+    dash.classList.remove('view-single');
+    document.getElementById('status-hermes').style.opacity = '1';
+    document.getElementById('status-nagato').style.opacity = '1';
+  }
+}
+
+// ─── Card Collapse ───
+function toggleCard(header) {
+  const body = header.nextElementSibling;
+  const arrow = header.querySelector('.toggle-arrow');
+  body.classList.toggle('collapsed');
+  arrow.classList.toggle('collapsed');
+}
+
+// ─── Toast ───
+function showToast(msg) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// ─── Demo Mode (when no backend) ───
+function startDemoMode() {
+  addTerminalLine('[Cockpit] Running in demo mode — no backend detected.', 'warn');
+  addTerminalLine('[Hermes] Session initialized. Model: xiaomi/mimo-v2-pro', 'info');
+  addTerminalLine('[Nagato] Session initialized. Model: xiaomi/mimo-v2-pro', 'info');
+  addTerminalLine('$ hermes status', 'cmd');
+  addTerminalLine('  Agent: Hermes | Status: active | Uptime: 2h 14m', 'output');
+  addTerminalLine('$ nagato status', 'cmd');
+  addTerminalLine('  Agent: Nagato | Status: active | Uptime: 1h 47m', 'output');
+  addTerminalLine('[Hermes] Working on: Building Agent Cockpit frontend', 'info');
+  addTerminalLine('[Nagato] Working on: Monitoring system metrics', 'info');
+  addTerminalLine('$ df -h /', 'cmd');
+  addTerminalLine('  Filesystem  Size  Used  Avail  Use%  Mounted on', 'output');
+  addTerminalLine('  /dev/sda1   100G   42G    58G   42%  /', 'output');
+  addTerminalLine('[info] All systems nominal.', 'info');
+
+  updateAgentStatus('hermes', { status: 'active', model: 'xiaomi/mimo-v2-pro', task: 'Building Agent Cockpit frontend', tokens: 24500 });
+  updateAgentStatus('nagato', { status: 'active', model: 'xiaomi/mimo-v2-pro', task: 'Monitoring system metrics', tokens: 18200 });
+
+  renderTasks([
+    { id: 1, text: 'Build Agent Cockpit frontend', status: 'in-progress', agent: 'Hermes' },
+    { id: 2, text: 'Set up WebSocket backend', status: 'pending', agent: 'Hermes' },
+    { id: 3, text: 'Monitor system resources', status: 'in-progress', agent: 'Nagato' },
+    { id: 4, text: 'Deploy monitoring dashboard', status: 'pending', agent: 'Nagato' },
+    { id: 5, text: 'Initialize agent sessions', status: 'completed', agent: 'All' },
+  ]);
+
+  // Simulated live metrics
+  function randomMetrics() {
+    updateMetrics('hermes', {
+      cpu: 15 + Math.random() * 40,
+      mem: 30 + Math.random() * 25,
+      disk: 42 + Math.random() * 3
+    });
+    updateMetrics('nagato', {
+      cpu: 10 + Math.random() * 35,
+      mem: 25 + Math.random() * 20,
+      disk: 42 + Math.random() * 3
+    });
+    updateMetrics('sys', {
+      cpu: 20 + Math.random() * 50,
+      mem: 45 + Math.random() * 30,
+      disk: 42 + Math.random() * 3
+    });
+  }
+  randomMetrics();
+  setInterval(randomMetrics, METRICS_INTERVAL);
+
+  // Occasional terminal output
+  const demoLines = [
+    { line: '[Hermes] Processing request...', type: 'info' },
+    { line: '[Nagato] Metric check complete. CPU: 23%', type: 'info' },
+    { line: '$ ls agent-cockpit/', type: 'cmd' },
+    { line: '  static/  server.py  README.md', type: 'output' },
+    { line: '[Hermes] File written: index.html (14.2KB)', type: 'info' },
+    { line: '[Nagato] Memory usage stable.', type: 'output' },
+    { line: 'WARNING: High CPU usage detected on core 3', type: 'warn' },
+    { line: '$ git status', type: 'cmd' },
+    { line: '  On branch main. Clean working tree.', type: 'output' },
+  ];
+  let demoIdx = 0;
+  setInterval(() => {
+    const item = demoLines[demoIdx % demoLines.length];
+    addTerminalLine(item.line, item.type);
+    demoIdx++;
+  }, 4000);
+}
+
+// ─── Init ───
+connectWebSocket();
+</script>
+</body>
+</html>
