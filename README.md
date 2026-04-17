@@ -96,11 +96,17 @@ You need to start each service in a separate terminal from the `ai-dev-agent` ro
 
 *   **`apps/`**: Contains standalone applications.
     *   `frontend/`: The Next.js chat interface.
-*   **`packages/`**: Contains shared libraries and services.
+*   **`packages/`**: Contains shared libraries and services (TypeScript).
     *   `llm-gateway/`: Service to interface with LLMs.
     *   `chat-service/`: Service for chat logic and WebSocket communication.
     *   `shared/`: Shared types, interfaces, and utilities.
     *   `file-manager/`, `scraper-service/`, `terminal-service/`: Placeholder packages for future tools.
+*   **`agent-cockpit/`**: Real-time monitoring dashboard (Python/Flask).
+    *   REST API + WebSocket live terminal streaming for agent monitoring.
+    *   Kubernetes deployment manifests (k3s with Traefik ingress).
+    *   See [`agent-cockpit/README.md`](./agent-cockpit/README.md) for details.
+*   **`scripts/`**: Operational scripts.
+    *   `nagato-watchdog.sh`: Auto-recovery watchdog that monitors the Nagato tmux session and restarts on crash.
 *   **`canvas/`**: Design documents and research findings.
 *   **`docs/`**: Further documentation, including tool server specifications.
 
